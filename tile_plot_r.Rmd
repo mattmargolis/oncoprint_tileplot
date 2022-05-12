@@ -1,0 +1,450 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(ggplot2)
+library(grid)
+library(plyr)
+library(tools)
+library(gridExtra)
+library(reshape2)
+library(scales)
+library(formattable)
+if(!"egg" %in% installed.packages()){
+  source("https://bioconductor.org/biocLite.R")
+  biocLite("egg")
+}
+library(egg)
+library(RColorBrewer)
+library(dplyr)
+
+makeTilePlot <- function(tilePlotData, geneList, outputPDF=paste(getwd(),"/unnamedTilePlot.pdf",sep=""), DO=F, PATH=F, TMB=TRUE, MSI=TRUE, CustomGeneOrder=FALSE,FREQ=TRUE,STACKEDFREQ=TRUE, PUSH_TO_BOTTOM=c()){
+  fontsize<-20
+  options(stringsAsFactors = F)
+  sd<-read.table(file=tilePlotData,header=T,sep="\t",strip.white=T,na.strings=c("","NA","N/A"))
+  TMB2=TMB && ("TMB" %in% sd$functional)
+  MSI2=MSI && ("MSI" %in% sd$functional)
+  PATH2=PATH && ("PathLevel" %in% colnames(sd))
+  DO2=DO && ("disease" %in% colnames(sd))
+  geneList<-read.table(file=geneList,header=F,strip.white=T)
+  geneList2<-data.frame(V1=geneList$V1[geneList$V1 %in% sd$gene])
+  lengthMSI=0
+  lengthTMB=0
+  lengthPATH=0
+  #Add 11 here to include a variant type for slippy indels
+  colorList <- c("0"="white", "1"="salmon", "2"="deeppink",
+                 "3"="skyblue", "4"="steelblue4", "5"="gold3","6"="red","7"="blue","8"="yellow","9"="grey70", "11" = "black")
+  variantList <- c("0"="", "1"="Point Mutation/Indel", "2"="Amplification", "3"="Deletion", "4"="Truncation", "5"="Fusion/Rearrangement", "6"="Amp & Point Mutation/Indel", "7"="Del & Truncation", "8"="Amp & Fusion/Rearrangement", "9"="Other Multiple", "11" = "Variant Present in sample")
+  FM_SLATE <-"#435363"
+  FM_FIRE <- "#FF4C00"
+  FM_SEA <- "#64CCC9"
+  BLACK <- "#000000"
+  colorListTMB<-c("1"=FM_SEA, "2"=FM_SLATE, "3"=FM_FIRE, "0"=BLACK)
+  TMBlist<-c( "1"="Low (<6 mutations/mb)", "2"="Intermediate (>=6 and <20 mutations/mb)","3"="High (>=20 mutations/mb)", "0"="Undetermined")
+  MSIcolor<-c("1"=FM_SEA, "2"=FM_SLATE, "3"=FM_FIRE, "0"="white", "4"="white")
+  MSIlist<-c("1"="MSS", "2"="MSI ambiguous", "3"="MSI-H", "4"="undetermined", "0"="no MSI")
+  Pathcolor<-c("1"=FM_SEA, "2"=FM_SLATE, "3"=FM_FIRE, "0"="white", "4"="white")
+  Pathlist<-c("1"="Negative", "2"="Equivocal or low positive", "3"="positive or high positive", "4"="undetermined", "0"="no path")
+  sd2<-sd[sd$gene!='none',c("trf","gene","type")]
+  sd3<-acast(sd2,trf~gene,value.var ="type",fill=0)
+  
+  if (CustomGeneOrder) {
+    sd3<-as.data.frame(sd3[,geneList2$V1[geneList2$V1!='none']])
+    geneOrder<-geneList2$V1[geneList2$V1!='none']
+    missingTRFs<-as.character(unique(sd$trf))
+    print('here')
+    sd3[missingTRFs[!(missingTRFs %in% rownames(sd3))],]<-rep(0,dim(sd3)[2])
+    print('there')
+  } 
+  
+  else{
+    sortedGenes<-names(sort(table(subset(sd$gene,sd$gene!='none')), decreasing = T))
+    geneOrder<-names(sort(table(subset(sd$gene,sd$gene!='none')), decreasing = T))
+    # PUSH TO TOP
+    geneOrder <- geneOrder[!geneOrder %in% PUSH_TO_BOTTOM]
+    sortedGenes <- c(geneOrder, PUSH_TO_BOTTOM)
+    ####
+    sd3<-as.data.frame(sd3[,sortedGenes[sortedGenes %in% geneList2$V1]])
+    missingTRFs<-as.character(unique(sd$trf))
+    sd3[missingTRFs[!(missingTRFs %in% rownames(sd3))],]<-rep(0,dim(sd3)[2])
+  }
+  
+  if (TMB2){
+    lengthTMB=1/10
+    sd3a1<-sd[sd$functional=='TMB',c("trf","functional","TMB")]
+    sd3a2<-as.data.frame(acast(sd3a1,trf~functional,value.var="TMB",fill=0))
+    sd3c1<-sd[sd$functional=='TMB',c("trf","functional","TMBLevel")]
+    sd3c2<-as.data.frame(acast(sd3c1,trf~functional,value.var="TMBLevel",fill=0))
+    sd3$TMB<-sd3a2[rownames(sd3),"TMB"]
+    sd3$TMBLevel<-sd3c2[rownames(sd3),"TMB"]
+  }
+  if (MSI2){
+    lengthMSI=1/10
+    sd3b1<-sd[sd$functional=='MSI',c("trf","functional","MSILevel")]
+    sd3b2<-as.data.frame(acast(sd3b1,trf~functional,value.var="MSILevel",fill=0))
+    sd3$MSI<-sd3b2[rownames(sd3),"MSI"]
+  }
+  if (PATH2){
+    lengthPATH=1/10
+    sd3path1<-sd[sd$functional=='PD-L1',c("trf","functional","PathLevel")]
+    sd3path2<-as.data.frame(acast(sd3path1,trf~functional,value.var="PathLevel",fill=0))
+    sd3$path<-sd3path2[rownames(sd3),"PD-L1"] #change to pathology test of interest
+  }
+  if (DO2){
+    sd3do<-as.data.frame(unique(sd[,c("trf","disease")]))
+    rownames(sd3do)<-sd3do$trf
+    unique(sd$disease)
+    dovalues<-data.frame(dolabel=unique(sd$disease),DO=1:length(unique(sd$disease)))
+    sd3$disease<-sd3do[rownames(sd3),"disease"]
+    sd3$disease<-dovalues$DO[match(unlist(sd3$disease),dovalues$dolabel)]
+  }  
+  sd4<-sd3[do.call(order, as.data.frame(-sd3)),] 
+  sd4.m<-melt(as.matrix(sd4))
+  sd4.m.genes<-subset(sd4.m,!(sd4.m$Var2 %in% c("TMB","MSI","TMBLevel","path","disease")))
+  if (MSI2){
+    sd4.m.MSI<-subset(sd4.m,sd4.m$Var2=="MSI")
+  }
+  if (TMB2){
+    sd4.m.TMB<-subset(sd4.m,sd4.m$Var2=="TMB")
+  }
+  if (PATH2){
+    sd4.m.PATH<-subset(sd4.m,sd4.m$Var2=="path")
+  }
+  if (DO2){
+    sd4.m.DO<-subset(sd4.m,sd4.m$Var2=="disease")
+  }
+  gggene<-ggplot(sd4.m.genes,aes(Var1,Var2))+
+    geom_tile(aes(width=0.75,height=0.95,fill=factor(value))) +
+    scale_fill_manual(values=colorList, name="Variant Type", labels=variantList) +
+    scale_y_discrete(limits = rev(levels(factor(sd4.m.genes$Var2)))) +
+    scale_x_discrete(expand=c(-1.0005,1.0005)) + 
+    theme_classic() +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank(),
+          axis.ticks.x=element_blank(),
+          legend.position="bottom",
+          legend.title = element_text(size=fontsize),
+          legend.text = element_text(size=fontsize),
+          axis.title.y=element_text(size=fontsize),
+          axis.title.x=element_text(size=fontsize),
+          axis.text.x=element_blank(),
+          axis.text.y=element_text(size=fontsize,face="italic",colour="black"),
+          panel.border = element_rect(fill = NA, colour="black")) +
+    xlab(paste("Number of Samples:", as.character(length(unique(sd$trf))))) +
+    ylab("")
+  alteredMat<-as.data.frame(sort(table(subset(sd$gene,sd$gene!='none'))/length(unique(sd$trf)), decreasing = F))
+  rownames(alteredMat)<-alteredMat$Var1
+  alteredMat<-alteredMat[geneOrder[geneOrder %in% geneList$V1],]
+  if (FREQ){
+    ggAlter<-ggplot(alteredMat,aes(Var1,Freq,width=.95)) +
+    geom_bar(stat="identity") +
+    geom_text(aes(label=percent(Freq)), hjust=-0.25, size=7.5)+
+    theme_classic() +
+    theme(axis.ticks=element_blank(),
+          legend.position="top",
+          legend.title = element_text(size=fontsize),
+          legend.text = element_text(size=fontsize),
+          axis.ticks.x = element_line(),
+          axis.text.x=element_text(size=fontsize,colour="black"),#element_blank(),
+          axis.text.y=element_blank(),#element_text(size=12,colour="black"),
+          axis.title.y=element_text(size=fontsize),
+          axis.title.x=element_text(size=fontsize),
+          panel.border = element_rect(fill = NA, colour="black")) +
+    xlab("Alteration\nFrequency") + 
+    scale_x_discrete(position = "top",limits=rev(alteredMat$Var1)) +
+    ylab("") + scale_y_continuous(expand=c(0.0125,0),limits = c(0,1.4), position = "left",labels = scales::percent) +
+    coord_flip()
+  }
+  if (FREQ & STACKEDFREQ){
+    alteredMat<-sd4.m.genes
+    alteredMat$ID <- rownames(alteredMat)
+    alteredMat <- within(alteredMat, geneAndClassPrevalence <- as.integer(ave(ID, list(Var2,value), FUN=length))/length(unique(sd$trf)))
+    alteredMat <- unique(alteredMat[,c("Var2","value","geneAndClassPrevalence")])
+    alteredMat$Var2<-factor(alteredMat$Var2, as.character(unique(alteredMat$Var2)))
+    ggAlter<-ggplot(alteredMat, aes(x=Var2, y=geneAndClassPrevalence, fill=factor(value), width=0.95)) + 
+    geom_bar(stat="identity") +
+    theme_classic() + 
+    theme(axis.ticks=element_blank(),
+          legend.position="none",
+          legend.title = element_text(size=fontsize),
+          legend.text = element_text(size=fontsize),
+          axis.ticks.x = element_line(),
+          axis.text.x=element_text(size=fontsize,colour="black"),#element_blank(),
+          axis.text.y=element_blank(),#element_text(size=12,colour="black"),
+          axis.title.y=element_text(size=fontsize),
+          axis.title.x=element_text(size=fontsize),
+          panel.border = element_rect(fill = NA, colour="black")) +
+    scale_fill_manual(values = colorList, name = "") +
+    ylab("") + scale_y_continuous(expand=c(0.0125,0),limits = c(0,1.025),position = "left") +
+    scale_x_discrete(position = "top",limits=rev(levels(alteredMat$Var2))) +
+    xlab("Alteration\nFrequency") + 
+    ggtitle("") +
+    coord_flip()
+  }
+  if (MSI2){
+    ggMSI<- ggplot(sd4.m.MSI,aes(Var1,Var2)) +
+      geom_tile(aes(width=0.75,height=0.95,fill=factor(value))) +
+      scale_fill_manual(values=MSIcolor, name="MSI status", labels=MSIlist) +
+      scale_color_manual(values=MSIcolor, name="MSI status", labels=MSIlist) +
+      scale_x_discrete(expand=c(-1.0005,1.0005)) + 
+      theme_classic() +
+      theme(axis.ticks=element_blank(),
+            legend.position="top",
+            legend.title = element_text(size=fontsize),
+            legend.text = element_text(size=fontsize),
+            axis.text.x=element_blank(),
+            axis.text.y=element_blank(),
+            axis.title.y=element_text(size=fontsize),
+            panel.border = element_rect(fill = NA, colour="black")) +
+      xlab("") +
+      ylab("MSI\n")
+  }
+  if (TMB2){
+    sd4.m.TMB$value2<-sd4[sd4.m.TMB$Var1,"TMBLevel"]
+    ggTMB<-ggplot(sd4.m.TMB,aes(Var1,value,fill=as.factor(value2))) +
+      geom_bar(stat="identity") +
+      scale_fill_manual(values=colorListTMB, name="TMB Level", labels=TMBlist) +
+      scale_color_manual(values=colorListTMB, name="TMB Level", labels=TMBlist) +
+      scale_x_discrete(expand=c(-1.0005,1.0005)) + 
+      theme_classic() +
+      theme(
+        axis.ticks=element_blank(),
+        legend.position="top",
+        legend.title = element_text(size=fontsize),
+        legend.text = element_text(size=fontsize),
+        axis.text.x=element_blank(),
+        axis.title.y=element_text(size=fontsize),
+        axis.text.y=element_text(size=fontsize,colour="black"),
+        panel.border = element_rect(fill = NA, colour="black")) +
+      xlab("") +
+      ylab("Mutation\nload per mb") +
+      coord_cartesian(ylim =c(0, 50))
+  }
+  if (PATH2){
+    ggPATH<- ggplot(sd4.m.PATH,aes(Var1,Var2)) +
+      geom_tile(aes(width=0.75,height=0.95,fill=factor(value))) +
+      scale_fill_manual(values=Pathcolor, name="Path Level", labels=Pathlist) +
+      scale_color_manual(values=Pathcolor, name="Path Level", labels=Pathlist) +
+      scale_x_discrete(expand=c(-1.0005,1.0005)) + 
+      theme_classic() +
+      theme(axis.ticks=element_blank(),
+            legend.position="top",
+            legend.title = element_text(size=fontsize),
+            legend.text = element_text(size=fontsize),
+            axis.text.x=element_blank(),
+            axis.text.y=element_blank(),
+            axis.title.y=element_text(size=fontsize),
+            panel.border = element_rect(fill = NA, colour="black")) +
+      xlab("") +
+      ylab("PATH\n")
+  }
+  lengthDO=40
+  extraChar=0.05
+  if (DO2){
+    sd4.m.DO$disease<-dovalues$dolabel[match(unlist(sd4.m.DO$value),dovalues$DO)]
+    length(levels(factor(sd4.m.DO$disease)))->levelsOfDisease
+    if (max(unlist(lapply(levels(factor(sd4.m.DO$disease)), nchar)))>10){
+      extraChar<-extraChar*max(unlist(lapply(levels(factor(sd4.m.DO$disease)), nchar)))/10
+    }
+    if (levelsOfDisease<=40){
+      lengthDO=levelsOfDisease+2
+    }
+    if (levelsOfDisease<3){levelsOfDisease=3}
+    myColors <- colorRampPalette(brewer.pal(levelsOfDisease, "Set1"))(levelsOfDisease)
+    names(myColors) <- levels(factor(sd4.m.DO$disease))
+    ggDO<- ggplot(sd4.m.DO,aes(Var1,disease)) +
+      geom_tile(aes(width=0.75,height=0.95,fill=disease)) +
+      theme_classic() +
+      theme(axis.ticks=element_blank(),
+            legend.position="none",
+            legend.title = element_text(size=fontsize),
+            legend.text = element_text(size=fontsize),
+            axis.text.x=element_blank(),
+            axis.text.y=element_text(size=fontsize),
+            axis.title.x.top=element_text(size=fontsize),
+            panel.border = element_rect(fill = NA, colour="black")) +
+      xlab("Disease") + scale_x_discrete(expand=c(-1.0005,1.0005), position="top") + 
+      ylab("")
+  }
+  ggBlock11<-ggplot()+theme_void()
+  ggBlock12<-ggplot()+theme_void()
+  ggBlock13<-ggplot()+theme_void()
+  ggBlock14<-ggplot()+theme_void()
+  ggBlock15<-ggplot()+theme_void()
+  ggBlock21<-ggplot()+theme_void()
+  ggBlock22<-ggplot()+theme_void()
+  ggBlock23<-ggplot()+theme_void()
+  ggBlock24<-ggplot()+theme_void()
+  ggBlock25<-ggplot()+theme_void()
+  ggBlock31<-ggplot()+theme_void()
+  ggBlock32<-ggplot()+theme_void()
+  ggBlock33<-ggplot()+theme_void()
+  ggBlock34<-ggplot()+theme_void()
+  ggBlock35<-ggplot()+theme_void()
+  ggBlock41<-ggplot()+theme_void()
+  ggBlock42<-ggplot()+theme_void()
+  ggBlock43<-ggplot()+theme_void()
+  ggBlock44<-ggplot()+theme_void()
+  ggBlock45<-ggplot()+theme_void()
+  ggBlock52<-ggplot()+theme_void()
+  ggBlock53<-ggplot()+theme_void()
+  ggBlock54<-ggplot()+theme_void() 
+  ggBlock55<-ggplot()+theme_void()
+  lengthGenes=21
+  if (length(levels(factor(sd4.m.genes$Var2)))<=20 && length(levels(factor(sd4.m.genes$Var2)))>6){
+    lengthGenes=length(levels(factor(sd4.m.genes$Var2)))+1
+  }
+  if (length(levels(factor(sd4.m.genes$Var2)))<=6){
+    lengthGenes=7
+  }
+  if (DO2){
+    pdf(outputPDF, height=18*(lengthGenes/20+lengthDO/40+lengthTMB+lengthMSI+lengthPATH), width=32*(0.95+extraChar))
+  } else{
+    pdf(outputPDF, height=18*(lengthGenes/20+0.05+lengthTMB+lengthMSI+lengthPATH), width=32)
+  }
+  Dy=lengthDO*0.25 #used to be 1.5
+  Py=0.5
+  Ty=1.0
+  My=0.5
+  Gy=lengthGenes*0.5
+  heights<-data.frame(DPTM=c(Dy,Py,Ty,My,Gy),PTM=c(0,Py,Ty,My,Gy),DPT=c(0,Dy,Py,Ty,Gy),DPM=c(0,Dy,Py,My,Gy),DTM=c(0,Dy,Ty,My,Gy),DP=c(0,0,Dy,Py,Gy),DM=c(0,0,Dy,My,Gy),DT=c(0,0,Dy,Ty,Gy),PT=c(0,0,Py,Ty,Gy),PM=c(0,0,Py,My,Gy),TM=c(0,0,Ty,My,Gy),Dx=c(0,0,0,Dy,Gy),Px=c(0,0,0,Py,Gy),Tx=c(0,0,0,Ty,Gy),Mx=c(0,0,0,My,Gy))
+  heights$genes<-c(0,0,0,0,Gy)
+  heights$genes->heightvalues
+  if (DO2 && PATH2 && TMB2 && MSI2){
+    ggBlock11<-ggDO
+    ggBlock21<-ggPATH
+    ggBlock31<-ggTMB
+    ggBlock41<-ggMSI
+    heights$DPTM->heightvalues
+  }
+  if (DO2 && !PATH2 && TMB2 && MSI2){
+    ggBlock21<-ggDO
+    ggBlock31<-ggTMB
+    ggBlock41<-ggMSI
+    heights$DTM->heightvalues
+  }
+  if (DO2 && !PATH2 && !TMB2 && MSI2){
+    ggBlock31<-ggDO
+    ggBlock41<-ggMSI
+    heights$DM->heightvalues
+  }
+  if (DO2 && !PATH2 && !TMB2 && !MSI2){
+    ggBlock41<-ggDO
+    heights$Dx->heightvalues
+  }
+  if (!DO2 && PATH2 && TMB2 && MSI2){
+    ggBlock21<-ggPATH
+    ggBlock31<-ggTMB
+    ggBlock41<-ggMSI
+    heights$PTM->heightvalues
+  }
+  if (!DO2 && PATH2 && !TMB2 && MSI2){
+    ggBlock31<-ggPATH
+    ggBlock41<-ggMSI
+    heights$PM->heightvalues
+  }
+  if (!DO2 && PATH2 && !TMB2 && !MSI2){
+    ggBlock41<-ggPATH
+    heights$Px->heightvalues
+  }
+  if (!DO2 && !PATH2 && TMB2 && MSI2){
+    ggBlock31<-ggTMB
+    ggBlock41<-ggMSI
+    heights$TM->heightvalues
+  }
+  if (!DO2 && !PATH2 && TMB2 && !MSI2){
+    ggBlock41<-ggTMB
+    heights$Tx->heightvalues
+  }
+  if (!DO2 && !PATH2 && !TMB2 && MSI2){
+    ggBlock41<-ggMSI
+    heights$M->heightvalues
+  }
+  if (DO2 && PATH2 && TMB2 && !MSI2){
+    ggBlock21<-ggDO
+    ggBlock31<-ggPATH
+    ggBlock41<-ggTMB
+    heights$DPT->heightvalues
+  }
+  if (DO2 && PATH2 && !TMB2 && MSI2){
+    ggBlock21<-ggDO
+    ggBlock31<-ggPATH
+    ggBlock41<-ggMSI
+    heights$DPM->heightvalues
+  }
+  if (DO2 && PATH2 && !TMB2 && !MSI2){
+    ggBlock31<-ggDO
+    ggBlock41<-ggPATH
+    heights$DP->heightvalues
+  }
+  if (DO2 && !PATH2 && TMB2 && !MSI2){
+    ggBlock31<-ggDO
+    ggBlock41<-ggTMB
+    heights$DT->heightvalues
+  }
+  if (!DO2 && PATH2 && TMB2 && !MSI2){
+    ggBlock31<-ggPATH
+    ggBlock41<-ggTMB
+    heights$PT->heightvalues
+  }
+  
+  gggene <- gggene + labs(caption="\n\nFor internal use only; not for distribution or sharing outside of the Roche group without consent from FMI")
+  
+  if (FREQ){combinedPlot<- ggarrange(ggBlock11, ggBlock12, ggBlock13, ggBlock14, ggBlock15,
+                                     ggBlock21, ggBlock22, ggBlock23, ggBlock24, ggBlock25,
+                                     ggBlock31, ggBlock32, ggBlock33, ggBlock34, ggBlock35,
+                                     ggBlock41, ggBlock42, ggBlock43, ggBlock44, ggBlock45,
+                                     gggene, ggAlter, ggBlock53, ggBlock54, ggBlock55,
+                                     widths = c(5,0.5,0,0,0),
+                                     heights = heightvalues,
+                                     ncol=5,
+                                     newpage=F)
+  } else {combinedPlot<- ggarrange(ggBlock11, ggBlock12, ggBlock13, ggBlock14, ggBlock15,
+                                   ggBlock21, ggBlock22, ggBlock23, ggBlock24, ggBlock25,
+                                   ggBlock31, ggBlock32, ggBlock33, ggBlock34, ggBlock35,
+                                   ggBlock41, ggBlock42, ggBlock43, ggBlock44, ggBlock45,
+                                   gggene, ggBlock52, ggBlock53, ggBlock54, ggBlock55,
+                                   widths = c(5,0,0,0,0),
+                                   heights = heightvalues,
+                                   ncol=5,
+                                   newpage=F)}
+  dev.off()
+  print(paste("Outputting file to: ",outputPDF))
+  if(sum(!(geneList$V1 %in% sd$gene))>0){warning(paste(c("Your list included genes that were not in the gene list. These were filtered out:",paste(geneList$V1[!(geneList$V1 %in% sd$gene)])),collapse="  "))}
+  if(TMB && !("TMB" %in% sd$functional)){warning("Requested TMB plot, but there was no TMB data. Plotting without TMB tiles.")}
+  if(MSI && !("MSI" %in% sd$functional)){warning("Requested MSI plot, but there was no MSI data. Plotting without MSI tiles.")}
+  if(PATH && !("PathLevel" %in% colnames(sd))){warning("Requested Pathology plot, but there was no column with \"PathLevel\". Plotting without Path tiles.")}
+  if(DO && !("disease" %in% colnames(sd))){warning("Requested disease plot, but there was no column with \"disease\". Plotting without Path tiles.")}
+  
+}
+
+runMultiTilePlot<- function(TMB3=TRUE,MSI3=TRUE,DO3=TRUE,PATH3=TRUE,CustomGeneOrder3=FALSE,FREQ2=TRUE,STACKEDFREQ2=TRUE,PUSH_TO_BOTTOM=c('IPAT_akt_pathway(-)')){
+  filenames = dir(pattern="*.tileplotdata.txt")
+  for (file in filenames) {
+    filebase = file_path_sans_ext(file_path_sans_ext(file))
+    outputPDF = paste(paste(getwd(),filebase,sep="/"), "tileplot.pdf", sep=".")
+    makeTilePlot(paste(c(getwd(),"/",filebase,".tileplotdata.txt"),sep="",collapse=""),
+                 paste(c(getwd(),"/",filebase,".gene_list.txt"),sep="",collapse=""), outputPDF, TMB=TMB3, MSI=MSI3, DO=DO3, PATH=PATH3,FREQ=FREQ2,STACKEDFREQ=STACKEDFREQ2,
+                 CustomGeneOrder=CustomGeneOrder3,PUSH_TO_BOTTOM=PUSH_TO_BOTTOM)
+  }
+}
+
+
+setwd("/Users/bkaplan/OneDrive - Foundation Medicine Inc/Queries/Q1_2021_queries_local_repo/DBI_20210212_D.1")
+runMultiTilePlot(TMB3=T,MSI3=T,DO3=F,PATH3=F,CustomGeneOrder3=F,FREQ2=T,STACKEDFREQ2=F)
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+

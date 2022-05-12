@@ -1,0 +1,28 @@
+trf	disease	gene	type	TMB	functional	TMBLevel	MSILevel	PathLevel
+TRF058512.01	soft tissue sarcoma undifferentiated	none	10	4.03729817546	TMB	1	0	0
+TRF077385.01	head and neck adenoid cystic carcinoma	none	10	3.47998270449	TMB	1	0	0
+TRF191386.01	unknown primary (nos)	none	10	3.22983854037	TMB	1	0	0
+TRF041317.01	unknown primary (nos)	none	10	1.61491927019	TMB	1	0	0
+TRF391605.01	soft tissue sarcoma (nos)	none	10	0.807459635093	TMB	1	0	0
+TRF398590.01	soft tissue liposarcoma	none	10	0.0	TMB	1	0	0
+TRF374444.01	soft tissue sarcoma (nos)	none	10	0.0	TMB	1	0	0
+ORD-1037053-01*US1009173.01	unknown primary (nos)	none	10	0.0	TMB	1	0	0
+TRF413820.01	soft tissue sarcoma (nos)	none	10	0.0	TMB	1	0	0
+TRF058512.01	soft tissue sarcoma undifferentiated	none	0	10000	MSI	0	4	0
+TRF041317.01	unknown primary (nos)	none	0	10000	MSI	0	4	0
+TRF191386.01	unknown primary (nos)	none	0	10000	MSI	0	1	0
+ORD-1037053-01*US1009173.01	unknown primary (nos)	none	0	10000	MSI	0	1	0
+TRF398590.01	soft tissue liposarcoma	none	0	10000	MSI	0	1	0
+TRF391605.01	soft tissue sarcoma (nos)	none	0	10000	MSI	0	1	0
+TRF413820.01	soft tissue sarcoma (nos)	none	0	10000	MSI	0	1	0
+TRF374444.01	soft tissue sarcoma (nos)	none	0	10000	MSI	0	1	0
+TRF077385.01	head and neck adenoid cystic carcinoma	none	0	10000	MSI	0	1	0
+ORD-1037053-01*US1009173.01	unknown primary (nos)	none	0	10000	gene	0	0	0
+TRF413820.01	soft tissue sarcoma (nos)	none	0	10000	gene	0	0	0
+TRF077385.01	head and neck adenoid cystic carcinoma	none	0	10000	gene	0	0	0
+TRF191386.01	unknown primary (nos)	none	0	10000	gene	0	0	0
+TRF391605.01	soft tissue sarcoma (nos)	none	0	10000	gene	0	0	0
+TRF058512.01	soft tissue sarcoma undifferentiated	none	0	10000	gene	0	0	0
+TRF374444.01	soft tissue sarcoma (nos)	none	0	10000	gene	0	0	0
+TRF398590.01	soft tissue liposarcoma	none	0	10000	gene	0	0	0
+TRF041317.01	unknown primary (nos)	none	0	10000	gene	0	0	0
